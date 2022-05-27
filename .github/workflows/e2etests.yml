@@ -407,5 +407,5 @@ jobs:
       sm_version: ${{ needs.SetPatternfileForServicemeshAndSampleApp.outputs.sm_version }}
       adapter_version:  ${{ needs.SetPatternfileForServicemeshAndSampleApp.outputs.adapter_version }}
       output_filename: data.json
-    secrets:
+    secrets: 
       token: ${{ secrets.PROVIDER_TOKEN }}
