@@ -384,12 +384,12 @@ jobs:
         run: |
            wget https://raw.githubusercontent.com/service-mesh-patterns/service-mesh-patterns/master/samples/minimalistiobookinfo.yaml
            yq e -i '.services.istioinstallation.settings.istioVersion="${{ steps.gettag.outputs.release }}"' ./minimalistiobookinfo.yaml 
-           cat ./minimalistiobookinfo.yaml 
+           cat ./minimalistiobookinfo.yaml
       - name: Uploading file
         uses: actions/upload-artifact@v2
         with:
           name: patternfile
-          path: ./.github/install/minimalistiobookinfo.yaml
+          path: ./minimalistiobookinfo.yaml
 
   TestIstioFWithBookinfoApp:
     needs: SetPatternfileForBookinfoApp
