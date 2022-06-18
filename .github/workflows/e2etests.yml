@@ -51,7 +51,7 @@ jobs:
     with:
       expected_resources: istiod,istio-egressgateway,istio-ingressgateway
       expected_resources_types: pod,pod,pod
-      expected_resources_namespaces: istio-system,istio-system,istio-system
+      expected_resources_namespaces: default, meshery
       deployment_url: https://raw.githubusercontent.com/meshery/meshery/master/install/deployment_yamls/k8s/meshery-istio-deployment.yaml
       service_url: https://raw.githubusercontent.com/meshery/meshery/master/install/deployment_yamls/k8s/meshery-istio-service.yaml
       adapter_name: istio
@@ -394,7 +394,7 @@ jobs:
     needs: SetPatternfileForBookinfoApp
     uses: meshery/meshery/.github/workflows/test_adapters.yaml@master
     with:
-      expected_resources: ratings, reviews, productpage
+      expected_resources: ratings, reviews, productpage, meshery-istio
       expected_resources_types: pod,pod,pod,pod
       expected_resources_namespaces: default
       deployment_url: https://raw.githubusercontent.com/meshery/meshery-consul/master/consul/config_templates/bookinfo.yaml
