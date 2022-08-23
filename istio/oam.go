@@ -11,17 +11,15 @@ import (
 )
 
 // CompHandler is the type for functions which can handle OAM components
-type CompHandler func(*Istio, v1alpha1.Component, bool) (string, error)
+type CompHandler func(*Istio, v1alpha1.Component, bool, []string) (string, error)
 
 // HandleComponents handles the processing of OAM components
-func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool) (string, error) {
+func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool, kubeconfigs []string) (string, error) {
 	var errs []error
 	var msgs []string
 
 	compFuncMap := map[string]CompHandler{
 		"IstioMesh":            handleComponentIstioMesh,
-		"VirtualService":       handleComponentVirtualService,
-		"EnvoyFilterIstio":     handleComponentEnvoyFilter,
 		"GrafanaIstioAddon":    handleComponentIstioAddon,
 		"PrometheusIstioAddon": handleComponentIstioAddon,
 		"ZipkinIstioAddon":     handleComponentIstioAddon,
@@ -31,7 +29,7 @@ func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool) (st
 	for _, comp := range comps {
 		fnc, ok := compFuncMap[comp.Spec.Type]
 		if !ok {
-			msg, err := handleIstioCoreComponent(istio, comp, isDel, "", "")
+			msg, err := handleIstioCoreComponent(istio, comp, isDel, "", "", kubeconfigs)
 			if err != nil {
 				errs = append(errs, err)
 				continue
@@ -41,7 +39,7 @@ func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool) (st
 			continue
 		}
 
-		msg, err := fnc(istio, comp, isDel)
+		msg, err := fnc(istio, comp, isDel, kubeconfigs)
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -58,7 +56,7 @@ func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool) (st
 }
 
 // HandleApplicationConfiguration handles the processing of OAM application configuration
-func (istio *Istio) HandleApplicationConfiguration(config v1alpha1.Configuration, isDel bool) (string, error) {
+func (istio *Istio) HandleApplicationConfiguration(config v1alpha1.Configuration, isDel bool, kubeconfigs []string) (string, error) {
 	var errs []error
 	var msgs []string
 	for _, comp := range config.Spec.Components {
@@ -67,14 +65,14 @@ func (istio *Istio) HandleApplicationConfiguration(config v1alpha1.Configuration
 				namespaces := castSliceInterfaceToSliceString(trait.Properties["namespaces"].([]interface{}))
 				policy := trait.Properties["policy"].(string)
 
-				if err := handleMTLS(istio, namespaces, policy, isDel); err != nil {
+				if err := handleMTLS(istio, namespaces, policy, isDel, kubeconfigs); err != nil {
 					errs = append(errs, err)
 				}
 			}
 
 			if trait.Name == "automaticSidecarInjection" {
 				namespaces := castSliceInterfaceToSliceString(trait.Properties["namespaces"].([]interface{}))
-				if err := handleNamespaceLabel(istio, namespaces, isDel); err != nil {
+				if err := handleNamespaceLabel(istio, namespaces, isDel, kubeconfigs); err != nil {
 					errs = append(errs, err)
 				}
 			}
@@ -90,12 +88,12 @@ func (istio *Istio) HandleApplicationConfiguration(config v1alpha1.Configuration
 	return mergeMsgs(msgs), nil
 }
 
-func handleMTLS(istio *Istio, namespaces []string, policy string, isDel bool) error {
+func handleMTLS(istio *Istio, namespaces []string, policy string, isDel bool, kubeconfigs []string) error {
 	var errs []error
 	for _, ns := range namespaces {
 		policyName := fmt.Sprintf("%s-mtls-policy-operation", policy)
 
-		if _, err := istio.applyPolicy(ns, isDel, config.Operations[policyName].Templates); err != nil {
+		if _, err := istio.applyPolicy(ns, isDel, config.GetOperations(common.Operations, "master")[policyName].Templates, kubeconfigs); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -103,10 +101,10 @@ func handleMTLS(istio *Istio, namespaces []string, policy string, isDel bool) er
 	return mergeErrors(errs)
 }
 
-func handleNamespaceLabel(istio *Istio, namespaces []string, isDel bool) error {
+func handleNamespaceLabel(istio *Istio, namespaces []string, isDel bool, kubeconfigs []string) error {
 	var errs []error
 	for _, ns := range namespaces {
-		if err := istio.LoadNamespaceToMesh(ns, isDel); err != nil {
+		if err := istio.LoadNamespaceToMesh(ns, isDel, kubeconfigs); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -114,21 +112,17 @@ func handleNamespaceLabel(istio *Istio, namespaces []string, isDel bool) error {
 	return mergeErrors(errs)
 }
 
-func handleComponentIstioMesh(istio *Istio, comp v1alpha1.Component, isDel bool) (string, error) {
+func handleComponentIstioMesh(istio *Istio, comp v1alpha1.Component, isDel bool, kubeconfigs []string) (string, error) {
 	// Get the istio version from the settings
 	// we are sure that the version of istio would be present
 	// because the configuration is already validated against the schema
-	version := comp.Spec.Settings["version"].(string)
+	version := comp.Spec.Version
+	if version == "" {
+		return "", fmt.Errorf("pass valid version inside service for Istio installation")
+	}
+	//TODO: When no version is passed in service, use the latest istio version
 	profile := comp.Spec.Settings["profile"].(string)
-	return istio.installIstio(isDel, false, version, comp.Namespace, profile)
-}
-
-func handleComponentVirtualService(istio *Istio, comp v1alpha1.Component, isDel bool) (string, error) {
-	return handleIstioCoreComponent(istio, comp, isDel, "networking.istio.io/v1beta1", "VirtualService")
-}
-
-func handleComponentEnvoyFilter(istio *Istio, comp v1alpha1.Component, isDel bool) (string, error) {
-	return handleIstioCoreComponent(istio, comp, isDel, "networking.istio.io/v1alpha3", "EnvoyFilter")
+	return istio.installIstio(isDel, false, version, comp.Namespace, profile, kubeconfigs)
 }
 
 func handleIstioCoreComponent(
@@ -136,7 +130,8 @@ func handleIstioCoreComponent(
 	comp v1alpha1.Component,
 	isDel bool,
 	apiVersion,
-	kind string) (string, error) {
+	kind string,
+	kubeconfigs []string) (string, error) {
 	if apiVersion == "" {
 		apiVersion = getAPIVersionFromComponent(comp)
 		if apiVersion == "" {
@@ -175,10 +170,10 @@ func handleIstioCoreComponent(
 		msg = fmt.Sprintf("deleted %s config \"%s\" in namespace \"%s\"", kind, comp.Name, comp.Namespace)
 	}
 
-	return msg, istio.applyManifest(yamlByt, isDel, comp.Namespace)
+	return msg, istio.applyManifest(yamlByt, isDel, comp.Namespace, kubeconfigs)
 }
 
-func handleComponentIstioAddon(istio *Istio, comp v1alpha1.Component, isDel bool) (string, error) {
+func handleComponentIstioAddon(istio *Istio, comp v1alpha1.Component, isDel bool, kubeconfigs []string) (string, error) {
 	var addonName string
 
 	switch comp.Spec.Type {
@@ -193,20 +188,20 @@ func handleComponentIstioAddon(istio *Istio, comp v1alpha1.Component, isDel bool
 	default:
 		return "", nil
 	}
-
+	version := comp.Spec.Version
 	// Get the service
-	svc := config.Operations[addonName].AdditionalProperties[common.ServiceName]
+	svc := config.GetOperations(common.Operations, version)[addonName].AdditionalProperties[common.ServiceName]
 
 	// Get the patches
 	patches := make([]string, 0)
-	patches = append(patches, config.Operations[addonName].AdditionalProperties[config.ServicePatchFile])
-	patches = append(patches, config.Operations[addonName].AdditionalProperties[config.CPPatchFile])
-	patches = append(patches, config.Operations[addonName].AdditionalProperties[config.ControlPatchFile])
+	patches = append(patches, config.GetOperations(common.Operations, version)[addonName].AdditionalProperties[config.ServicePatchFile])
+	patches = append(patches, config.GetOperations(common.Operations, version)[addonName].AdditionalProperties[config.CPPatchFile])
+	patches = append(patches, config.GetOperations(common.Operations, version)[addonName].AdditionalProperties[config.ControlPatchFile])
 
 	// Get the templates
-	templates := config.Operations[addonName].Templates
+	templates := config.GetOperations(common.Operations, version)[addonName].Templates
 
-	_, err := istio.installAddon(comp.Namespace, isDel, svc, patches, templates)
+	_, err := istio.installAddon(comp.Namespace, isDel, svc, patches, templates, kubeconfigs)
 
 	msg := fmt.Sprintf("created service of type \"%s\"", comp.Spec.Type)
 	if isDel {
