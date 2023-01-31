@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/layer5io/meshery-adapter-library/common"
+	"github.com/layer5io/meshery-adapter-library/meshes"
 	"github.com/layer5io/meshery-istio/internal/config"
+	"github.com/layer5io/meshkit/errors"
 	"github.com/layer5io/meshkit/models/oam/core/v1alpha1"
 	"gopkg.in/yaml.v2"
 )
@@ -25,26 +28,52 @@ func (istio *Istio) HandleComponents(comps []v1alpha1.Component, isDel bool, kub
 		"ZipkinIstioAddon":     handleComponentIstioAddon,
 		"JaegerIstioAddon":     handleComponentIstioAddon,
 	}
-
+	stat1 := "deploying"
+	stat2 := "deployed"
+	if isDel {
+		stat1 = "removing"
+		stat2 = "removed"
+	}
 	for _, comp := range comps {
+		ee := &meshes.EventsResponse{
+			OperationId:   uuid.New().String(),
+			Component:     config.ServerConfig["type"],
+			ComponentName: config.ServerConfig["name"],
+		}
 		fnc, ok := compFuncMap[comp.Spec.Type]
 		if !ok {
 			msg, err := handleIstioCoreComponent(istio, comp, isDel, "", "", kubeconfigs)
 			if err != nil {
+				ee.Summary = fmt.Sprintf("Error while %s %s", stat1, comp.Spec.Type)
+				ee.Details = err.Error()
+				ee.ErrorCode = errors.GetCode(err)
+				ee.ProbableCause = errors.GetCause(err)
+				ee.SuggestedRemediation = errors.GetRemedy(err)
+				istio.StreamErr(ee, err)
 				errs = append(errs, err)
 				continue
 			}
-
+			ee.Summary = fmt.Sprintf("%s %s successfully", comp.Spec.Type, stat2)
+			ee.Details = fmt.Sprintf("The %s is now %s.", comp.Spec.Type, stat2)
+			istio.StreamInfo(ee)
 			msgs = append(msgs, msg)
 			continue
 		}
 
 		msg, err := fnc(istio, comp, isDel, kubeconfigs)
 		if err != nil {
+			ee.Summary = fmt.Sprintf("Error while %s %s", stat1, comp.Spec.Type)
+			ee.Details = err.Error()
+			ee.ErrorCode = errors.GetCode(err)
+			ee.ProbableCause = errors.GetCause(err)
+			ee.SuggestedRemediation = errors.GetRemedy(err)
+			istio.StreamErr(ee, err)
 			errs = append(errs, err)
 			continue
 		}
-
+		ee.Summary = fmt.Sprintf("%s %s %s successfully", comp.Name, comp.Spec.Type, stat2)
+		ee.Details = fmt.Sprintf("The %s %s is now %s.", comp.Name, comp.Spec.Type, stat2)
+		istio.StreamInfo(ee)
 		msgs = append(msgs, msg)
 	}
 
@@ -133,19 +162,18 @@ func handleIstioCoreComponent(
 	kind string,
 	kubeconfigs []string) (string, error) {
 	if apiVersion == "" {
-		apiVersion = getAPIVersionFromComponent(comp)
+		apiVersion = v1alpha1.GetAPIVersionFromComponent(comp)
 		if apiVersion == "" {
 			return "", ErrIstioCoreComponentFail(fmt.Errorf("failed to get API Version for: %s", comp.Name))
 		}
 	}
 
 	if kind == "" {
-		kind = getKindFromComponent(comp)
+		kind = v1alpha1.GetKindFromComponent(comp)
 		if kind == "" {
 			return "", ErrIstioCoreComponentFail(fmt.Errorf("failed to get kind for: %s", comp.Name))
 		}
 	}
-
 	component := map[string]interface{}{
 		"apiVersion": apiVersion,
 		"kind":       kind,
@@ -164,7 +192,6 @@ func handleIstioCoreComponent(
 		istio.Log.Error(err)
 		return "", err
 	}
-
 	msg := fmt.Sprintf("created %s \"%s\" in namespace \"%s\"", kind, comp.Name, comp.Namespace)
 	if isDel {
 		msg = fmt.Sprintf("deleted %s config \"%s\" in namespace \"%s\"", kind, comp.Name, comp.Namespace)
@@ -209,14 +236,6 @@ func handleComponentIstioAddon(istio *Istio, comp v1alpha1.Component, isDel bool
 	}
 
 	return msg, err
-}
-
-func getAPIVersionFromComponent(comp v1alpha1.Component) string {
-	return comp.Annotations["pattern.meshery.io.mesh.workload.k8sAPIVersion"]
-}
-
-func getKindFromComponent(comp v1alpha1.Component) string {
-	return comp.Annotations["pattern.meshery.io.mesh.workload.k8sKind"]
 }
 
 func castSliceInterfaceToSliceString(in []interface{}) []string {

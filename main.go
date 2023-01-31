@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/layer5io/meshery-istio/build"
 	"github.com/layer5io/meshery-istio/istio"
 	"github.com/layer5io/meshkit/logger"
@@ -31,12 +32,14 @@ import (
 	"github.com/layer5io/meshery-istio/internal/config"
 	"github.com/layer5io/meshery-istio/istio/oam"
 	configprovider "github.com/layer5io/meshkit/config/provider"
+	"github.com/layer5io/meshkit/utils/events"
 )
 
 var (
 	serviceName = "istio-adapter"
 	version     = "edge"
 	gitsha      = "none"
+	instanceID  = uuid.NewString()
 )
 
 func init() {
@@ -97,13 +100,14 @@ func main() {
 	//      log.Err("Tracing Init Failed", err.Error())
 	//      os.Exit(1)
 	// }
-
+	ev := events.NewEventStreamer()
 	// Initialize Handler intance
-	handler := istio.New(cfg, log, kubeconfigHandler)
+	handler := istio.New(cfg, log, kubeconfigHandler, ev)
 	handler = adapter.AddLogger(log, handler)
 
 	service.Handler = handler
-	service.Channel = make(chan interface{}, 10)
+
+	service.EventStreamer = ev
 	service.StartedAt = time.Now()
 	service.Version = version
 	service.GitSHA = gitsha
@@ -157,6 +161,10 @@ func registerCapabilities(port string, log logger.Handler) {
 	if err := oam.RegisterTraits(mesheryServerAddress(), serviceAddress()+":"+port); err != nil {
 		log.Error(err)
 	}
+	err := oam.RegisterMeshModelComponents(instanceID, mesheryServerAddress(), serviceAddress(), port)
+	if err != nil {
+		log.Error(err)
+	}
 	log.Info("Successfully registered static components with Meshery Server.")
 }
 
@@ -191,12 +199,15 @@ func registerWorkloads(port string, log logger.Handler) {
 	}
 
 	log.Info("Registering latest workload components for version ", version)
+
 	err := adapter.CreateComponents(adapter.StaticCompConfig{
-		URL:     url,
-		Method:  gm,
-		Path:    build.WorkloadPath,
-		DirName: version,
-		Config:  build.NewConfig(version),
+		URL:             url,
+		Method:          gm,
+		OAMPath:         build.WorkloadPath,
+		MeshModelPath:   build.MeshModelPath,
+		MeshModelConfig: build.MeshModelConfig,
+		DirName:         version,
+		Config:          build.NewConfig(version),
 	})
 	if err != nil {
 		log.Info("Failed to generate components for version " + version)

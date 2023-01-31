@@ -1,4 +1,4 @@
-name: Test Istio Adapter - control plane 
+name: E2E Test Istio Adapter - Control Plane
 
 on:
   push:
@@ -15,13 +15,13 @@ on:
     types: [published]
 jobs:
   SetPatternfileForServicemeshInstall:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       sm_version: ${{ steps.gettag.outputs.release }}
       adapter_version:  ${{ env.version }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Get version of adapter
         run: |
             if [ ${{ github.event_name }} == "release" ];then
@@ -67,7 +67,7 @@ jobs:
   UpdateDocsForServicemeshInstall:
     needs: TestIstioForServicemeshInstall
     if:  "always() && github.event_name != 'pull_request' "
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Skip if needed
         run: |
@@ -78,7 +78,7 @@ jobs:
             if [ "${{github.event_name }}" == "release" ];then
               echo "version=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
             fi
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v3
         with:
           repository: meshery/meshery 
           token: ${{ secrets.GH_ACCESS_TOKEN }}   
@@ -128,13 +128,13 @@ jobs:
           commit_message: '[Docs] Test status of adapter'
 
   SetPatternfileForServicemeshAndAddon:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       sm_version: ${{ steps.gettag.outputs.release }}
       adapter_version:  ${{ env.version }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Get version of adapter
         run: |
             if [ ${{ github.event_name }} == "release" ];then
@@ -180,9 +180,9 @@ jobs:
       token: ${{ secrets.PROVIDER_TOKEN }} 
 
   UpdateDocsForServicemeshAndAddon:
-    needs: [TestIstioForServicemeshAndAddon, UpdateDocsForServicemeshInstall]
+    needs: TestIstioForServicemeshAndAddon
     if:  "always() && github.event_name != 'pull_request' "
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Skip if needed
         run: |
@@ -193,7 +193,7 @@ jobs:
             if [ "${{github.event_name }}" == "release" ];then
               echo "version=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
             fi
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v3
         with:
           repository: meshery/meshery 
           token: ${{ secrets.GH_ACCESS_TOKEN }}   
@@ -245,13 +245,13 @@ jobs:
           commit_message: '[Docs] Test status of adapter'
 
   SetPatternfileForServicemeshAndSampleApp:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       sm_version: ${{ steps.gettag.outputs.release }}
       adapter_version:  ${{ env.version }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Get version of adapter
         run: |
             if [ ${{ github.event_name }} == "release" ];then
@@ -295,9 +295,9 @@ jobs:
       token: ${{ secrets.PROVIDER_TOKEN }} 
 
   UpdateDocsForServicemeshAndSampleApp:
-    needs: [TestIstioForServicemeshAndSampleApp, UpdateDocsForServicemeshInstall]
+    needs: TestIstioForServicemeshAndSampleApp
     if:  "always() && github.event_name != 'pull_request' "
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Skip if needed
         run: |
@@ -308,7 +308,7 @@ jobs:
             if [ "${{github.event_name }}" == "release" ];then
               echo "version=${GITHUB_REF/refs\/tags\//}" >> $GITHUB_ENV
             fi
-      - uses: actions/checkout@master
+      - uses: actions/checkout@v3
         with:
           repository: meshery/meshery 
           token: ${{ secrets.GH_ACCESS_TOKEN }}   
